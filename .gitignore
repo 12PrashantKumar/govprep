@@ -1,0 +1,10 @@
+venv/
+.env
+__pycache__/
+*.pyc
+db/
+chat_log*.json
+data/*.pdf
+*.log
+.DS_Store
+.vscode/
