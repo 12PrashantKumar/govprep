@@ -2,7 +2,7 @@ venv/
 .env
 __pycache__/
 *.pyc
-db/
+data/
 chat_log*.json
 data/*.pdf
 *.log
