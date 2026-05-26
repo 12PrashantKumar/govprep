@@ -8,3 +8,4 @@ data/*.pdf
 *.log
 .DS_Store
 .vscode/
+db/
