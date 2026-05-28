@@ -43,7 +43,7 @@ def retrieve(query, k=3):
     return chunks
 
 # ==========================================
-# UI HELPER
+
 # ==========================================
 def format_chunks_for_display(chunks):
     """Pretty-print chunks for human reading."""
