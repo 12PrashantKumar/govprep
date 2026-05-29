@@ -31,7 +31,8 @@ def retrieve(query, k=3):
     
     # Search the database
     results = collection.query(query_texts=[query], n_results=k)
-    
+    # print(results)  # Debug: See the raw output from ChromaDB
+
     # Unpack ChromaDB's nested arrays into a clean, standard Python list
     chunks = []
     for i in range(len(results['documents'][0])):
