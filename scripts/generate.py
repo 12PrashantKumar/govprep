@@ -1,4 +1,5 @@
 import os
+import time
 from dotenv import load_dotenv
 from google import genai
 from retrieve import retrieve
@@ -65,11 +66,21 @@ if __name__ == "__main__":
         "what is the capital of france",  # Should trigger refusal  
     ]
 
-    for query in test_queries:
+    for i,query in enumerate(test_queries):
         print(f"\n{'='*60}")
         print(f"QUERY: {query}")
         print('='*60)
-        result  = answer_with_rag(query,k=3)
-        print(f"ANSWER: {result['answer']}")
-        print(f"\n[Chunks: {len(result['chunks_used'])}, "
-              f"top dist: {result['chunks_used'][0]['distance']:.4f}]")
+
+        try:
+            result = answer_with_rag(query,k=3)
+            print(f"ANSWER: {result['answer']}")
+            print(f"\n[Chunks: {len(result['chunks_used'])}, "
+                  f"top dist: {result['chunks_used'][0]['distance']:.4f}]")
+        except Exception as e:
+            print(f"❌ Error occurred: {e}")
+            print("You might be hitting rate limits. Pausing longer...")
+
+        # PACING: Pause for 4 seconds after each query to respect the Free Tier
+        if i < len(test_queries) - 1:
+            print("\n⏳ Sleeping for 4 seconds to protect API rate limits...")
+            time.sleep(4)
