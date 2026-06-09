@@ -1,66 +1,100 @@
-import os
+"""
+retrieve_multi.py  (Week 5 - parameterized version, path-robust)
+
+Retrieval across the multi-document corpus.
+Takes a collection_name so you can point it at different collections
+(baseline vs recursive vs sweep experiments) without editing code.
+
+DB path is computed from THIS FILE's location (absolute), so it works no
+matter which directory you run from - matches ingest_v2.py exactly.
+
+Used by: score.py (evaluation) and generate_v1.py (the assistant).
+"""
+
 from pathlib import Path
+
 import chromadb
 from chromadb.utils import embedding_functions
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_DIR = BASE_DIR / "db"
+# Absolute path to govprep/db, computed from this file's location.
+# scripts/retrieve_multi.py -> parent is scripts/ -> parent.parent is govprep/
+DB_DIR = str(Path(__file__).resolve().parent.parent / "db")
 
-def get_collection():
-    print("Connecting to Chroma DB...")
-    client = chromadb.PersistentClient(path=str(DB_DIR))
-    ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-    return client.get_or_create_collection(name="govprep_multi", embedding_function=ef)
+DEFAULT_COLLECTION = "govprep_baseline"
 
-def retrieve(query, k=4,source_filter=None):
+_EMBED_FN = embedding_functions.SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2"
+)
+
+
+def get_collection(collection_name=DEFAULT_COLLECTION):
+    """Connect to ChromaDB (absolute db path) and return the named collection."""
+    client = chromadb.PersistentClient(path=DB_DIR)
+    return client.get_or_create_collection(
+        name=collection_name,
+        embedding_function=_EMBED_FN,
+    )
+
+
+def retrieve(query, k=3, collection_name=DEFAULT_COLLECTION, source=None):
     """
-    Retrieve top-k chunks. 
-    Optionally pass source_filter="polity" to restrict search.
+    Retrieve top-k chunks for a query from the given collection.
+
+    query           : the question text
+    k               : how many chunks to return
+    collection_name : which ChromaDB collection to search
+    source          : optional subject filter ('polity'/'history'/'geography')
+
+    Returns list of dicts: {text, source, book, page, distance}
     """
-    collection = get_collection()
-    
-    # Only build the WHERE clause if a filter was actually provided
-    where_clause = {"Source":source_filter} if source_filter else None
+    collection = get_collection(collection_name)
+    where = {"source": source} if source else None
 
     results = collection.query(
         query_texts=[query],
         n_results=k,
-        where=where_clause
+        where=where,
     )
-    
+
     chunks = []
-
-    if not results["documents"]:
-        print("No results found.")
-        return chunks
-    
-    for i in range(len(results["documents"][0])):
+    docs = results["documents"][0]
+    metas = results["metadatas"][0]
+    dists = results["distances"][0]
+    for i in range(len(docs)):
+        meta = metas[i]
         chunks.append({
-            "text": results["documents"][0][i],
-            "source": results["metadatas"][0][i]["source"],
-            "page": results["metadatas"][0][i]["page"],
-            "distance": results["distances"][0][i]
-
+            "text": docs[i],
+            "source": meta.get("source", "?"),
+            "book": meta.get("book", "?"),
+            "page": meta.get("page", "?"),
+            "distance": dists[i],
         })
     return chunks
 
-if __name__ == "__main__":
-    tests = [
-        "what are fundamental rights",      # Expect: polity
-        "physical features of india",       # Expect: geography
-        "ancient indian history",           # Expect: history
-    ]
-    for  q in tests:
-        print(f"\n{'='*60}\nQUERY: '{q}'\n{'='*60}")
-        results = retrieve(q)
-        
-        if not results:
-            print("No results found.")
-            continue
-        else:
-            for c in results:
-                # Beautifully formatting the provenance data
-                print(f"[{c['source'].upper()} - Page {c['page']} | dist={c['distance']:.3f}]")
-                print(f"{c['text'][:120].strip()}...\n")
 
-    
+if __name__ == "__main__":
+    import sys
+    coll = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_COLLECTION
+    print(f"DB path: {DB_DIR}")
+    print(f"Testing retrieval against collection: {coll}")
+
+    # First, show how many chunks the collection actually has - this tells us
+    # immediately whether we're connected to the populated DB.
+    try:
+        c = get_collection(coll)
+        print(f"Collection '{coll}' contains {c.count()} chunks.\n")
+    except Exception as e:
+        print(f"Could not open collection: {e}\n")
+
+    for q in ["what are fundamental rights",
+              "layers of the atmosphere",
+              "ancient indian civilization"]:
+        print(f"QUERY: {q}")
+        rows = retrieve(q, k=3, collection_name=coll)
+        if not rows:
+            print("  (no results - collection may be empty or wrong path)")
+        for r in rows:
+            snip = r["text"][:80].replace("\n", " ")
+            print(f"  [{r['source']:>9} {r['book']} p{r['page']} "
+                  f"d={r['distance']:.3f}] {snip}...")
+        print()
