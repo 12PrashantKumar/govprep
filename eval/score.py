@@ -16,7 +16,7 @@ def hit_and_rank(gold_item, k=3):
     """Return (hit:bool, rank:int or None)for one question"""
     chunks = retrieve(gold_item["question"], k=k)
 
-    #  Replace it with this:
+    
     keyword = (gold_item.get("must_contain") or gold_item.get("required_keyword", "")).lower()
     target_source = gold_item["expected_source"].lower()
 
