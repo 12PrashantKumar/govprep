@@ -17,7 +17,7 @@ def hit_and_rank(gold_item, k=3):
     chunks = retrieve(gold_item["question"], k=k)
 
     
-    keyword = (gold_item.get("must_contain") or gold_item.get("required_keyword", "")).lower()
+    keyword = gold_item.get("required_keyword", "").lower()
     target_source = gold_item["expected_source"].lower()
 
     for rank, c  in enumerate(chunks, start=1):
