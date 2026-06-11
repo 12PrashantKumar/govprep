@@ -1,24 +1,22 @@
 """
-ingest_v2.py  (Week 5 - parameterized version)
-
 Loads ALL chapter PDFs from data/polity, data/history, data/geography,
 chunks them, and stores in a NAMED ChromaDB collection.
 
 You choose two things on the command line:
-  1. chunker:         'fixed' (baseline, day 2) or 'recursive' (day 3+)
+  1. chunker:         'fixed' (baseline) or 'recursive' 
   2. collection name: where to store it (so experiments don't overwrite)
 
 Examples:
-  # Day 2 baseline - full corpus, fixed-size chunking (no chunkers.py needed):
+  #  baseline - full corpus, fixed-size chunking (no chunkers.py needed):
   python ingest_v2.py fixed govprep_baseline
 
-  # Day 3 - full corpus, recursive chunking (requires chunkers.py):
+  # - full corpus, recursive chunking (requires chunkers.py):
   python ingest_v2.py recursive govprep_recursive_500
 
 NOTE on imports:
   recursive_chunk is imported LAZILY inside get_chunker(), NOT at the top.
-  This means day 2 ('fixed') runs even if chunkers.py doesn't exist yet.
-  chunkers.py is a day-3 file - it only needs to exist when you use 'recursive'.
+  This means  ('fixed') runs even if chunkers.py doesn't exist yet.
+  chunkers.py is a  file - it only needs to exist when you use 'recursive'.
 
 Folder layout expected:
   govprep/
@@ -75,7 +73,7 @@ def get_chunker(name):
     if name == "fixed":
         return fixed_chunk
     elif name == "recursive":
-        # Imported only when you actually choose 'recursive' (day 3+).
+        # Imported only when you actually choose 'recursive' 
         try:
             from chunkers import recursive_chunk
         except ImportError:
