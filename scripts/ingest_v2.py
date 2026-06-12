@@ -2,36 +2,15 @@
 Loads ALL chapter PDFs from data/polity, data/history, data/geography,
 chunks them, and stores in a NAMED ChromaDB collection.
 
-You choose two things on the command line:
-  1. chunker:         'fixed' (baseline) or 'recursive' 
-  2. collection name: where to store it (so experiments don't overwrite)
+Command line:
+  python ingest_v2.py <fixed|recursive> <collection_name> [chunk_size] [overlap]
 
 Examples:
-  #  baseline - full corpus, fixed-size chunking (no chunkers.py needed):
   python ingest_v2.py fixed govprep_baseline
-
-  # - full corpus, recursive chunking (requires chunkers.py):
   python ingest_v2.py recursive govprep_recursive_500
+  python ingest_v2.py recursive tmp_sweep_300_30 300 30 
 
-NOTE on imports:
-  recursive_chunk is imported LAZILY inside get_chunker(), NOT at the top.
-  This means  ('fixed') runs even if chunkers.py doesn't exist yet.
-  chunkers.py is a  file - it only needs to exist when you use 'recursive'.
-
-Folder layout expected:
-  govprep/
-    data/
-      polity/     ch01.pdf ch02.pdf ...
-      history/    ch01.pdf ch02.pdf ...
-      geography/  ch01.pdf ch02.pdf ...
-    scripts/
-      ingest_v2.py     <- this file
-      chunkers.py      <- created day 3; only needed for 'recursive'
-    db/
-
-Run from inside scripts/:
-  cd govprep/scripts
-  python ingest_v2.py fixed govprep_baseline
+If chunk_size/overlap are omitted, defaults (500/50) are used.
 """
 
 import sys
@@ -42,19 +21,19 @@ from chromadb.utils import embedding_functions
 from pypdf import PdfReader
 
 
-# ---- config ----
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DB_DIR = str(Path(__file__).resolve().parent.parent / "db")
 SUBJECTS = ["polity", "history", "geography"]
 
-CHUNK_SIZE = 500
-OVERLAP = 50
+#these were hardcoded constants CHUNK_SIZE/OVERLAP used directly in the chunkers. Now they are only DEFAULTS - the real values can be passed in per call, which is what lets the sweep test multiple sizes.
+DEFAULT_CHUNK_SIZE = 500
+DEFAULT_OVERLAP = 50
 BATCH_SIZE = 200
 
 
-# ---------------- chunkers ----------------
-def fixed_chunk(text, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
-    """The original week-3/4 fixed-size chunker. Used for the BASELINE (day 2)."""
+# fixed_chunk  RECEIVES chunk_size/overlap as parameters
+#     instead of reading global constants. using the module constants.)
+def fixed_chunk(text, chunk_size, overlap):
     chunks = []
     start = 0
     while start < len(text):
@@ -63,32 +42,27 @@ def fixed_chunk(text, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
     return chunks
 
 
-def get_chunker(name):
-    """
-    Return the chunk function for the chosen method.
-
-    The recursive import is done HERE (lazily), not at module top, so that
-    running 'fixed' on day 2 does not require chunkers.py to exist yet.
-    """
+# get_chunker now takes chunk_size + overlap and passes them into whichever chunker it returns. 
+#     The lazy 'from chunkers import recursive_chunk' inside the recursive
+#     branch is still here so 'fixed' runs without chunkers.py.
+def get_chunker(name, chunk_size, overlap):
     if name == "fixed":
-        return fixed_chunk
+        return lambda t: fixed_chunk(t, chunk_size, overlap)
     elif name == "recursive":
-        # Imported only when you actually choose 'recursive' 
         try:
             from chunkers import recursive_chunk
         except ImportError:
             raise ImportError(
                 "Could not import recursive_chunk from chunkers.py. "
-                "You only need this for the 'recursive' option (day 3+). "
-                "Create scripts/chunkers.py with recursive_chunk() first, "
-                "or use 'fixed' for the day-2 baseline."
+                "Needed only for 'recursive'. Create scripts/chunkers.py first, "
+                "or use 'fixed'."
             )
-        return lambda t: recursive_chunk(t, chunk_size=CHUNK_SIZE, overlap=OVERLAP)
+        return lambda t: recursive_chunk(t, chunk_size=chunk_size, overlap=overlap)
     else:
         raise ValueError(f"Unknown chunker '{name}'. Use 'fixed' or 'recursive'.")
 
 
-# ---------------- loading ----------------
+#load_pdf_pages + gather_documents  ----
 def load_pdf_pages(filepath):
     reader = PdfReader(str(filepath))
     pages = []
@@ -100,7 +74,7 @@ def load_pdf_pages(filepath):
 
 
 def gather_documents():
-    """Return list of (subject, book_name, page_number, page_text)."""
+    """Return list of (subject, book_name, page_number, page_text) for ALL chapters."""
     items = []
     for subject in SUBJECTS:
         folder = DATA_DIR / subject
@@ -112,38 +86,51 @@ def gather_documents():
         for pdf in pdf_files:
             pages = load_pdf_pages(pdf)
             if not pages:
-                print(f"    WARNING: no extractable text in {pdf.name} "
-                      f"(scanned PDF?) - skipping")
+                print(f"    WARNING: no text in {pdf.name} (scanned?) - skipping")
                 continue
             for page_num, text in pages:
                 items.append((subject, pdf.stem, page_num, text))
     return items
 
 
-# ---------------- ingestion ----------------
-def build(chunker_name, collection_name):
-    chunk_fn = get_chunker(chunker_name)
+#build() signature gained chunk_size, overlap, and replace.
+#     - chunk_size/overlap: passed through to get_chunker (default 500/50)
+#     - replace: NEW. When True, deletes the collection first so each sweep
+#       config starts clean. When False, keeps old behaviour (skip if filled).
+def build(chunker_name, collection_name,
+          chunk_size=DEFAULT_CHUNK_SIZE, overlap=DEFAULT_OVERLAP,
+          replace=False):
+    chunk_fn = get_chunker(chunker_name, chunk_size, overlap)
 
     client = chromadb.PersistentClient(path=DB_DIR)
     ef = embedding_functions.SentenceTransformerEmbeddingFunction(
         model_name="all-MiniLM-L6-v2"
     )
+
+    # optional clean-slate delete, used by the sweep
+    if replace:
+        try:
+            client.delete_collection(name=collection_name)
+        except Exception:
+            pass
+
     collection = client.get_or_create_collection(
-        name=collection_name,
-        embedding_function=ef,
+        name=collection_name, embedding_function=ef
     )
 
-    if collection.count() > 0:
-        print(f"Collection '{collection_name}' already has "
-              f"{collection.count()} chunks. Skipping.")
-        print("To rebuild this collection: delete db/ (or use a new name) and rerun.")
+    # < "and not replace" so a sweep rebuild isn't skipped
+    if collection.count() > 0 and not replace:
+        print(f"Collection '{collection_name}' already has {collection.count()} "
+              f"chunks. Skipping. (delete db/ or use a new name to rebuild)")
         return collection
 
-    print(f"Chunker: {chunker_name}  |  Collection: {collection_name}")
-    print("Gathering documents...")
+    #  print line now shows size/overlap so each run is labelled
+    print(f"Chunker: {chunker_name} | size={chunk_size} overlap={overlap} "
+          f"| Collection: {collection_name}")
     raw = gather_documents()
     print(f"Loaded {len(raw)} pages.")
 
+    # --chunk building + batched add ----
     ids, docs, metas = [], [], []
     for subject, book, page_num, text in raw:
         for ci, chunk in enumerate(chunk_fn(text)):
@@ -155,8 +142,7 @@ def build(chunker_name, collection_name):
 
     total = len(docs)
     if total == 0:
-        print("ERROR: 0 chunks produced. Check PDFs have selectable text "
-              "and the subject folders contain PDFs.")
+        print("ERROR: 0 chunks produced. Check PDFs/folders.")
         return collection
 
     print(f"Adding {total} chunks in batches of {BATCH_SIZE}...")
@@ -173,18 +159,21 @@ def build(chunker_name, collection_name):
 
 
 def usage():
-    print("Usage: python ingest_v2.py <fixed|recursive> <collection_name>")
-    print("  e.g. python ingest_v2.py fixed govprep_baseline")
-    print("       python ingest_v2.py recursive govprep_recursive_500")
+    print("Usage: python ingest_v2.py <fixed|recursive> <collection_name> "
+          "[chunk_size] [overlap]")
 
 
+#  __main__ now reads optional 3rd/4th args (chunk_size, overlap).
+#     If you don't pass them, it behaves exactly like before (500/50).
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
         usage()
         sys.exit(1)
     chunker_name = sys.argv[1].lower()
     collection_name = sys.argv[2]
+    cs = int(sys.argv[3]) if len(sys.argv) > 3 else DEFAULT_CHUNK_SIZE
+    ov = int(sys.argv[4]) if len(sys.argv) > 4 else DEFAULT_OVERLAP
     if chunker_name not in ("fixed", "recursive"):
         usage()
         sys.exit(1)
-    build(chunker_name, collection_name)
+    build(chunker_name, collection_name, chunk_size=cs, overlap=ov)
