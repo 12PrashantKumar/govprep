@@ -51,6 +51,8 @@ def hit_and_rank(gold_item, k, collection_name):
     return False, None
 
 
+
+
 def evaluate(collection_name, k=3):
     gold = load_gold()
     hits, reciprocal_ranks = 0, []
@@ -80,6 +82,26 @@ def evaluate(collection_name, k=3):
             "hit_rate": hit_rate, "mrr": mrr}
 
 
+
+def sweep_k(collection_name, k_values):
+    results = []
+    for k in k_values:
+        metrics = evaluate(collection_name,k=k)
+        results.append(metrics)
+
+    print("\n" + "=" * 50)
+    print(f"TOP-K SWEEP SUMMARY FOR '{collection_name}'")
+    print("=" * 50)
+    print(f"{'k Value':>7} | {'Hit Rate':>10} | {'MRR':>8}")
+    print("-" * 50)
+
+    for r in results:
+        print(f"{r['k']:7} | {r['hit_rate']:>10.3f} | {r['mrr']:>8.3f}")
+
+    print("="*50)
+
+
+
 def usage():
     print("Usage: python score.py <collection_name> [k]")
     print("  e.g. python score.py govprep_baseline")
@@ -91,5 +113,9 @@ if __name__ == "__main__":
         usage()
         sys.exit(1)
     collection = sys.argv[1]
-    k = int(sys.argv[2]) if len(sys.argv) > 2 else 3
-    evaluate(collection, k=k)
+    if len(sys.argv)>2 and sys.argv[2].lower() == "sweep":
+        k_values = [1,3,5,8]
+        sweep_k(collection,k_values)
+    else:
+        k = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+        evaluate(collection, k=k)

@@ -27,3 +27,12 @@ chunks keep complete ideas together. Winner: recursive 1000/100.
 # Best config so far
 recursive chunking, chunk_size=1000, overlap=100
 Hit Rate@3 = 0.733, MRR = 0.656 (up from 0.533 / 0.433 baseline)
+
+# top-k sweep (recursive 1000/100)
+| k | Hit Rate | MRR   |
+|---|----------|-------|
+| 1 | 0.600    | 0.600 |
+| 3 | 0.733    | 0.656 |
+| 5 | 0.733    | 0.656 |
+| 8 | 0.733    | 0.656 |
+Best k = 3 (plateaus after). Misses are unretrieved chunks, not ranking — a retrieval-quality issue, not a k issue.
