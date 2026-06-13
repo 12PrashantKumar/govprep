@@ -36,3 +36,13 @@ Hit Rate@3 = 0.733, MRR = 0.656 (up from 0.533 / 0.433 baseline)
 | 5 | 0.733    | 0.656 |
 | 8 | 0.733    | 0.656 |
 Best k = 3 (plateaus after). Misses are unretrieved chunks, not ranking — a retrieval-quality issue, not a k issue.
+
+## govprep_v1 vs govprep_v2 (before/after) 
+
+| Version                    | Hit Rate@3 | MRR   |
+|----------------------------|------------|-------|
+| v1 (fixed 500, baseline)   | 0.533      | 0.433 |
+| v2 (recursive 1000/100,k=3)| 0.733      | 0.656 |
+| Improvement                | +37%       | +52%  |
+
+Final config: recursive chunking, 1000/100, k=3.

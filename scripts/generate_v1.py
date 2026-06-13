@@ -51,7 +51,7 @@ def answer(question, memory):
     # Rewrite using history
     standalone = rewrite_followup(question, memory)
     # Retrieve across all sources
-    chunks = retrieve(standalone)
+    chunks = retrieve(standalone,k=3, collection_name="govprep_v2")
     
     # build prompt with history + chunks
     prompt = build_prompt(standalone, chunks, memory)

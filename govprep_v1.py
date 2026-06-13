@@ -24,7 +24,7 @@ def banner():
     print("="*60)
     print("  govprep_v1 - government exam Assistant (Multi-Doc + Memory)")
     print("  Sources: NCERT Polity, History, Geography")
-    print("  Powered by Gemini 2.0 Flash + ChromaDB")
+    print("  Powered by Gemini 2.5 Flash + ChromaDB")
     print("=" * 60)
     print("Commands: /sources, /reset, /history, quit\n")
 
@@ -51,6 +51,7 @@ def main():
                 print("="*40)
                 print(memory.as_text())
                 print("="*40+ "\n")
+                continue
             if q == "/sources":
                 if last and last.get("chunks"):
                     print("\n📚 Sources used for last answer:")
