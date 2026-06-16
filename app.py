@@ -17,8 +17,8 @@ if "messages" not in st.session_state:
 
 # Sidebar
 with st.sidebar:
-    st.header("🇮🇳 GovPrep AI")
-    st.write("AI study assistant for UPSC/CDS prep.")
+    st.header("GovPrep AI")
+    st.write("AI study assistant for prep.")
     st.write("**Sources:** NCERT Polity, History, Geography")
     st.divider()
     
