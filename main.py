@@ -1,88 +1,59 @@
-
-
-from fastapi import FastAPI, Request
-import sys
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import List
 from pathlib import Path
+import sys
 
-# Make scripts/ importable
 sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
 
 from memory import ConversationMemory
 from generate_v1 import answer
 
-# Create FastAPI application
+
 app = FastAPI(
     title="govprep API",
     description="RAG-powered UPSC/CDS study assistant",
     version="1.0"
 )
 
-# Shared memory (simple version for now)
 memory = ConversationMemory()
+
+class ChatRequest(BaseModel):
+    question : str
+
+class Source(BaseModel):
+    source : str
+    page : int
+
+class ChatResponse(BaseModel):
+    answer : str
+    rewritten : str
+    sources : List[Source]
+
+
 
 
 @app.get("/")
 def home():
-    """
-    Health check endpoint.
-    """
     return {
-        "status": "running",
-        "service": "govprep API"
+        "status" :"running",
+        "service" :"govprep api "
     }
 
 
-@app.post("/chat")
-async def chat(request: Request):
-    """
-    Main chat endpoint.
 
-    Expected JSON:
-    {
-        "question": "What are Fundamental Rights?"
-    }
-    """
 
-    data = await request.json()
-
-    question = data["question"]
-
-    result = answer(question, memory)
-
-    return {
-        "answer": result["answer"],
-        "rewritten": result["rewritten"],
-        "sources": [
-            {
-                "source": c["source"],
-                "page": c["page"]
-            }
+@app.post("/chat", response_model=ChatResponse)
+def chat(req: ChatRequest):
+    result = answer(req.question,memory)
+    return ChatResponse (
+        answer= result["answer"],
+        rewritten=result["rewritten"],
+        sources = [
+            Source(
+                source = c["source"],
+                page=c["page"]
+                )
             for c in result["chunks"]
         ]
-    }
-
-
-@app.get("/history")
-def history():
-    """
-    View current conversation history.
-    """
-
-    return {
-        "history": memory.as_text()
-    }
-
-
-@app.post("/reset")
-def reset():
-    """
-    Clear conversation memory.
-    """
-
-    global memory
-    memory = ConversationMemory()
-
-    return {
-        "status": "success",
-        "message": "Conversation memory cleared."
-    }
+    )
