@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
 from pathlib import Path
+from fastapi import HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
@@ -14,6 +16,12 @@ app = FastAPI(
     title="govprep API",
     description="RAG-powered UPSC/CDS study assistant",
     version="1.0"
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins = ["*"],
+    allow_methods = ["*"],
+    allow_headers = ["*"],
 )
 
 memory = ConversationMemory()
@@ -45,7 +53,20 @@ def home():
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    result = answer(req.question,memory)
+
+    if not req.question.strip():
+        raise HTTPException(   
+            status_code = 400,
+            detail = "Question is Empty"
+        )
+    try:
+        result = answer(req.question,memory)
+
+    except Exception :
+        raise HTTPException(
+            status_code=503,
+            detail = "The model is busy. Please try again."
+        )
     return ChatResponse (
         answer= result["answer"],
         rewritten=result["rewritten"],
@@ -57,3 +78,5 @@ def chat(req: ChatRequest):
             for c in result["chunks"]
         ]
     )
+
+
