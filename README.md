@@ -5,9 +5,10 @@ Ask a question in plain language and get a grounded, source-cited answer drawn
 from NCERT study material — and a clear "not in my sources" when the answer
 isn't there, instead of a hallucinated guess.
 
-Built from scratch in native Python (no heavy frameworks in the core) to
-understand each part of a retrieval-augmented generation (RAG) system, then
-measured and tuned with a real evaluation loop rather than guesswork.
+Built from scratch in native Python to understand each part of a
+retrieval-augmented generation (RAG) system, then measured and tuned with a
+real evaluation loop, and served through a FastAPI backend with a Streamlit
+frontend.
 
 ![govprep web UI](screenshot.png)
 
@@ -20,7 +21,21 @@ measured and tuned with a real evaluation loop rather than guesswork.
   ("what are their powers?" resolves correctly from context)
 - **Refuses to answer** when the retrieved passages don't support it — reducing
   hallucination instead of making something up
-- Runs as a **web app** (Streamlit) or from the command line
+- Runs as a **FastAPI backend** with a **Streamlit web frontend**, or from the
+  command line
+
+## Architecture
+
+```
+  Streamlit frontend  ──HTTP──>  FastAPI backend  ──>  RAG pipeline  ──>  ChromaDB
+   (app.py)                       (main.py)            (rewrite ->          (vector
+                                  POST /chat            retrieve ->          store)
+                                  Pydantic-validated    generate)
+```
+
+The frontend and backend are separate services. The UI sends questions to the
+API over HTTP and renders the response — it has no knowledge of how the answer
+is produced. The backend owns the RAG pipeline and returns validated JSON.
 
 ## Current corpus
 
@@ -55,15 +70,33 @@ question + history
    -> save the turn to memory
 ```
 
+## API
+
+The backend exposes a single chat endpoint.
+
+```
+POST /chat
+  request:  { "question": "what are fundamental rights?" }
+  response: { "answer": "...", "rewritten": "...",
+              "sources": [ { "source": "polity", "page": 4 } ] }
+```
+
+Run the backend and open the auto-generated interactive docs at
+http://127.0.0.1:8000/docs . Input is validated with Pydantic — malformed
+requests return a clear `422`; errors return proper status codes (`400` for bad
+input, `503` when the model is busy).
+
 ## Tech stack
 
 - **Python 3.11+**
+- **FastAPI + Uvicorn** — backend API
+- **Pydantic** — request/response validation
+- **Streamlit** — web frontend
 - **google-genai** SDK — Gemini 2.5 Flash (generation), Gemini 2.5 Flash-Lite
-  (cheap query rewriting)
+  (query rewriting)
 - **ChromaDB** — local vector database
 - **sentence-transformers** (`all-MiniLM-L6-v2`) — embeddings
 - **pypdf** — document loading
-- **Streamlit** — web interface
 
 ## Retrieval evaluation
 
@@ -72,10 +105,10 @@ three subjects, each tagged with a required keyword and expected subject) is
 scored with **Hit Rate@3** and **MRR**, counting a hit only when both the
 correct keyword and correct subject appear.
 
-| Config                         | Hit Rate@3 | MRR   |
-|--------------------------------|------------|-------|
-| Baseline (fixed 500-char)      | 0.533      | 0.433 |
-| Tuned (recursive 1000/100, k=3)| 0.733      | 0.656 |
+| Config                          | Hit Rate@3 | MRR   |
+|---------------------------------|------------|-------|
+| Baseline (fixed 500-char)       | 0.533      | 0.433 |
+| Tuned (recursive 1000/100, k=3) | 0.733      | 0.656 |
 
 A **+37% hit rate / +52% MRR** improvement over baseline, found by sweeping
 chunking strategy, chunk size, and top-k against the gold set. Full method,
@@ -85,7 +118,8 @@ results, and limitations are in [EVALUATION.md](EVALUATION.md).
 
 ```
 govprep/
-  app.py                 # Streamlit web UI
+  main.py                # FastAPI backend (POST /chat)
+  app.py                 # Streamlit frontend (calls the API over HTTP)
   govprep_v1.py          # command-line interface
   scripts/
     ingest_v2.py         # ingestion: load PDFs, chunk, embed, store
@@ -136,8 +170,12 @@ cd scripts
 python ingest_v2.py recursive govprep_v2 1000 100
 ```
 
-**Run the web app:**
+**Run the full app** (backend + frontend, in two terminals):
 ```bash
+# terminal 1 — backend
+uvicorn main:app --reload
+
+# terminal 2 — frontend
 streamlit run app.py
 ```
 
@@ -146,12 +184,13 @@ streamlit run app.py
 python govprep_v1.py
 ```
 
-
 ## Notes
 
 - Source PDFs and the local vector store are not committed to the repo.
 - Built as a learning project to understand production-grade RAG end to end:
-  retrieval, evaluation, and grounding — not just a wrapper around an LLM API.
+  retrieval, evaluation, grounding, and serving — not just a wrapper around an
+  LLM API.
 
 ---
+
 

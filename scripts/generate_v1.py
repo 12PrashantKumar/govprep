@@ -1,8 +1,18 @@
+import os
+from pathlib import Path
 import time
+from dotenv import load_dotenv
+from google import genai
+
 
 from retrieve_multi import retrieve
 from rewrite import rewrite_followup
-from llm import call_llm
+
+base_dir = Path(__file__).resolve().parent.parent
+load_dotenv(dotenv_path=base_dir / ".env")
+
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
 SYSTEM_PROMPT = """"You are a UPSC/CDS exam prep assistant answering from \
 NCERT textbooks. Rules:
 1. Answer ONLY from the passages below.
@@ -47,8 +57,12 @@ def answer(question, memory):
     prompt = build_prompt(standalone, chunks, memory)
 
     # generate response using model
-    # generate response through the centralized retry-safe helper
-    ans = call_llm(prompt).strip()
+    response = client.models.generate_content(
+        model= "gemini-2.5-flash",
+        contents = prompt
+    )
+
+    ans = response.text.strip()
 
     memory.add_turn(question, ans)
     return {"answer": ans, "rewritten": standalone, "chunks": chunks}
