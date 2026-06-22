@@ -11,6 +11,11 @@ COPY requirements.txt .
 # 4. INSTALL DEPENDENCIES: Run pip install inside the Linux container
 RUN pip install --no-cache-dir -r requirements.txt
 
+# DOWNLOAD THE AI MODEL: Pre-download the model so it's baked into the image
+# This prevents the container from having to download 90MB every time it wakes up.
+
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
 # 5. COPY THE REST OF YOUR CODE: Now copy main.py, app.py, and everything else into /app
 COPY . .
 
