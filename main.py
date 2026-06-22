@@ -79,4 +79,7 @@ def chat(req: ChatRequest):
         ]
     )
 
+@app.get("/health")
+def health():
+    return {"status":"OK"}
 
