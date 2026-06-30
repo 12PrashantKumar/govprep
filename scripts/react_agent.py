@@ -3,13 +3,13 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import tool
 from langchain.agents import create_agent
-
+from langgraph.errors import GraphRecursionError
 load_dotenv()
 
 @tool
 def search_corpus(query:str)->str:
     """Search the NCERT textbooks for relevant passages regarding Indian Polity and Constitution."""
-    print(f"   [🔧 Action] Searching GovPrep database for: '{query}'")
+    print(f"   [ Action] Searching GovPrep database for: '{query}'")
     from retrieve_multi import retrieve
     try:
         chunks = retrieve(query,k=3,collection_name="govprep_v2")
@@ -38,15 +38,17 @@ if __name__ == "__main__":
     # multi-step question
     question = "Compare fundamental rights and directive principles."
     print(f"\nUser: {question}\n")
-
+    try:
     # run agent
-    final_state = agent.invoke({"messages":[("user",question)]})
+        final_state = agent.invoke({"messages":[("user",question)]} ,config = {"recursion_limit":3})
 
 
     # Loop through the history and print the steps cleanly to see the reasoning
-    print("\n--- 🧠 REASONING TRACE ---")
-    for msg in final_state["messages"]:
-        msg.pretty_print()
-
+        print("\n---  REASONING TRACE ---")
+        for msg in final_state["messages"]:
+            msg.pretty_print()
+    except GraphRecursionError:
+        print("\n🛑 [SYSTEM INTERVENTION] Agent exceeded max iterations (3 steps).")
+        print("Safety brake applied to prevent infinite looping and API costs.")
 
     
