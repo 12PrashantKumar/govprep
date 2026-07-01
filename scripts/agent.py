@@ -1,97 +1,110 @@
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import tool
-from langgraph.graph import StateGraph,START,MessagesState
-from langgraph.prebuilt import ToolNode,tools_condition
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.agents import create_agent
+from langgraph.errors import GraphRecursionError
 
 load_dotenv()
 
-# the tool
+
+# 1. DEFINE  TOOLS 
 @tool
-def search_corpus(query:str)->str:
-    """Search the NCERT textbooks for relevant passages regarding Indian Polity, History, and Constitution."""
-    print(f"   [ Action] Searching GovPrep Database for: '{query}'")
-    from retrieve_multi import retrieve
+def search_corpus(query: str) -> str:
+    """Use this tool FIRST to search the NCERT textbooks for factual information regarding Indian Polity, history, and the Constitution."""
+    print(f"   [🔧 Action] Searching GovPrep database for: '{query}'")
     try:
-        chunks = retrieve(query,k=7,collection_name="govprep_v2")
+        from retrieve_multi import retrieve
+        chunks = retrieve(query, k=5, collection_name="govprep_v2")
         return "\n".join(f"[Source: {c['source']} | Page: {c['page']}] {c['text']}" for c in chunks)
     except Exception as e:
-        return f"Error reading database: {str(e)}"
-    
-tool_lists = [search_corpus]
+        return f"Tool error: {str(e)}. Try a different search query or approach."
 
-# Ai brain
+@tool
+def calculate(expression: str) -> str:
+    """Use this tool ONLY to evaluate basic mathematical expressions (like '1976 - 1949' or '32 / 2').
+    Input must be a valid Python mathematical expression."""
+    print(f"   [🔧 Action] Calculating: '{expression}'")
+    try:
+        return str(eval(expression)) 
+    except Exception as e:
+        return f"Tool error: {str(e)}. Check your mathematical syntax. Ensure you are using numbers and operators."
+
+@tool
+def web_search(query: str) -> str:
+    """Use this tool ONLY for current affairs, recent news, or general knowledge NOT found in the NCERT corpus. 
+    Do not use this for historical constitutional facts."""
+    print(f"   [🔧 Action] Searching Wikipedia for: '{query}'")
+    try:
+        import wikipedia
+        wikipedia.set_lang("en")
+        
+        # Step 1: Search for the best matching page title first
+        search_results = wikipedia.search(query)
+        
+        if not search_results:
+            return "Tool error: No Wikipedia page found. Try using shorter keywords instead of a full sentence."
+            
+        top_page = search_results[0]
+        print(f"   [↳ Detail] Fetching summary for page: '{top_page}'")
+        
+        # Step 2: Fetch the summary of that specific page
+        result = wikipedia.summary(top_page, sentences=4)
+        return result
+        
+    except Exception as e:
+        return f"Tool error: Wikipedia search failed - {str(e)}. Try using a very short, specific keyword (e.g., 'Chief of Defence Staff')."
+    
+#  the tools list
+tools_list = [search_corpus, calculate, web_search]
+
+
+#CREATE THE MODEL & AGENT (Global)
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
-llm_bind_tools = llm.bind_tools(tool_lists)
+agent = create_agent(llm, tools=tools_list)
 
-def agent_node(state:MessagesState):
-    response = llm_bind_tools.invoke(state["messages"])
-    return {"messages":[response]}
-
-# build graph
-workflow = StateGraph(MessagesState)
-
-workflow.add_node("agent",agent_node)
-workflow.add_node("tools",ToolNode(tool_lists))
-workflow.add_edge(START,"agent")
-workflow.add_conditional_edges("agent",tools_condition)
-workflow.add_edge("tools","agent")
-
-# compile
-app = workflow.compile()
-
-def agentic_answer(question:str)->dict:
+# ==========================================
+# THE EXPORTABLE FUNCTION
+# ==========================================
+def answer_agentic(question: str) -> dict:
     """
-    Runs the LangGraph agent to answer a question.
-    Returns a dictionary with the final answer and the tools it decided to use.
+    Runs the ReAct agent on a user's question.
+    Returns a dictionary with the final answer text.
     """
-
-    print(f"\n Agentic Mode Activated: '{question}'")
-
-    # run graph
-    final_state = app.invoke({"messages":[("user",question)]})
-    messages = final_state["messages"]
-
-    # extract clean text from final message
-    final_message = messages[-1]
-    if isinstance(final_message.content, list):
-        final_answer = final_message.content[0]['text']
-    else:
-        final_answer = final_message.content
+    print(f"\n🤖 [AGENT INITIATED] Question: '{question}'")
+    
+    try:
+        final_state = agent.invoke(
+            {"messages": [("user", question)]},
+            config={"recursion_limit": 5} 
+        )
         
-    # Trace back through the memory to see which tools it actually used
-    tools_used = []
-    for msg in messages:
-        # Check if the message has a 'tool_calls' attribute and if it's not empty
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            for tc in msg.tool_calls:
-                if tc['name'] not in tools_used:
-                    tools_used.append(tc['name'])
-                    
-    return {
-        "answer": final_answer,
-        "tools_used": tools_used
-    }
+        # Extract the final answer text cleanly
+        final_message = final_state["messages"][-1]
+        if isinstance(final_message.content, list):
+            answer_text = final_message.content[0]['text']
+        else:
+            answer_text = final_message.content
+            
+        return {"answer": answer_text}
+        
+    except GraphRecursionError:
+        print("🛑 [SYSTEM INTERVENTION] Max Iteration Limit Reached.")
+        return {"answer": "I'm sorry, I couldn't resolve that question within my allowed reasoning steps. Please try rephrasing."}
+    except Exception as e:
+        print(f"🛑 [CRITICAL ERROR] {str(e)}")
+        return {"answer": "I encountered an unexpected system error while trying to think."}
 
 
-#  (Only runs if you execute this file directly)
+# 4. QUICK TEST BLOCK
 
 if __name__ == "__main__":
-    # Test 1: In-Scope (Should use search_corpus and cite sources)
-    polity_question = "Which Article number guarantees the Right to Constitutional Remedies?"
-    result_1 = agentic_answer(polity_question)
-    print("\n--- TEST 1 RESULT ---")
-    print(f"Tools Used: {result_1['tools_used']}")
-    print(f"Answer: {result_1['answer']}\n")
+    # Test 1: Should use search_corpus
+    # test_result = answer_agentic("Compare fundamental rights and directive principles.")
     
-    print("-" * 50)
+    # Test 2: Should use web_search
+    test_result = answer_agentic("What is the capital of Australia?")
     
-    # Test 2: Out-of-Scope (Should NOT use tools, answers directly)
-    random_question = "What is the capital of France?"
-    result_2 = agentic_answer(random_question)
-    print("\n--- TEST 2 RESULT ---")
-    print(f"Tools Used: {result_2['tools_used']}")
-    print(f"Answer: {result_2['answer']}\n")
-          
+    print("\n✅ FINAL ANSWER:")
+    print(test_result["answer"])
