@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
 
 from memory import ConversationMemory
 from generate_v1 import answer
+from agent import answer_agentic
 
 
 app = FastAPI(
@@ -26,6 +27,7 @@ app.add_middleware(
 
 memory = ConversationMemory()
 
+
 class ChatRequest(BaseModel):
     question : str
 
@@ -37,6 +39,10 @@ class ChatResponse(BaseModel):
     answer : str
     rewritten : str
     sources : List[Source]
+
+class AgentResponse(BaseModel):
+    answer : str
+
 
 
 
@@ -83,3 +89,24 @@ def chat(req: ChatRequest):
 def health():
     return {"status":"OK"}
 
+
+@app.post("/chat/agent",response_model=AgentResponse)
+def chat_agent(req:ChatRequest):
+    """
+    V2 Smart Mode: ReAct agent that autonomously decides how to 
+    solve complex, multi-step queries using tool routing.
+    """
+    if not req.question.strip():
+        raise HTTPException(   
+            status_code = 400,
+            detail = "Question is Empty"
+        )
+    try:
+        # Run the agent function we built in scripts/agent.py
+        result = answer_agentic(req.question)
+        return AgentResponse(answer=result["answer"])
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Agent evaluation failed: {str(e)}"
+        )
