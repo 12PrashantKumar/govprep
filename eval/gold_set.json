@@ -24,6 +24,36 @@
     "expected_source": "polity",
     "required_keyword": "appointed"
   },
+  {
+    "question": "What does Article 21A of the Indian Constitution guarantee?",
+    "expected_source": "polity",
+    "required_keyword": "21a"
+  },
+  {
+    "question": "In which year was the 42nd Constitutional Amendment Act passed?",
+    "expected_source": "polity",
+    "required_keyword": "1976"
+  },
+  {
+    "question": "Which schedule of the Indian Constitution contains the Anti-Defection Law?",
+    "expected_source": "polity",
+    "required_keyword": "tenth"
+  },
+  {
+    "question": "Who was the court poet of King Harsha that wrote the Harshacharita?",
+    "expected_source": "history",
+    "required_keyword": "banabhatta"
+  },
+  {
+    "question": "Which specific rock edict of Ashoka mentions the Kalinga War?",
+    "expected_source": "history",
+    "required_keyword": "thirteenth"
+  },
+  {
+    "question": "In what exact year did the Kalinga War take place?",
+    "expected_source": "history",
+    "required_keyword": "261"
+  },
 
   {
     "question": "What are the main archaeological sources used to study ancient India?",
@@ -49,6 +79,21 @@
     "question": "Identify the significance of manuscript preservation in early Indian history.",
     "expected_source": "history",
     "required_keyword": "manuscript"
+  },
+  {
+    "question": "What is the exact length of India's coastline including the island groups?",
+    "expected_source": "geography",
+    "required_keyword": "7516"
+  },
+  {
+    "question": "Which longitude is officially taken as the Standard Meridian of India?",
+    "expected_source": "geography",
+    "required_keyword": "82"
+  },
+  {
+    "question": "What is the highest mountain peak in the Eastern Ghats?",
+    "expected_source": "geography",
+    "required_keyword": "mahendragiri"
   },
 
   {
