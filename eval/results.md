@@ -46,3 +46,15 @@ Best k = 3 (plateaus after). Misses are unretrieved chunks, not ranking — a re
 | Improvement                | +37%       | +52%  |
 
 Final config: recursive chunking, 1000/100, k=3.
+
+## govprep_v2 (after expanding our gold_set)
+| Version                    | Hit Rate@3 | MRR   |
+|----------------------------|------------|-------|
+| v2 (recursive 1000/100,k=3)| 0.458      | 0.410 |
+
+
+## govprep_v2 with Hybrid Search 
+|Metric          | Vector           | Hybrid (RRF)   | Delta  |
+|-------------------------------------------------------------|
+|Hit Rate@3      | 0.458            | 0.458          |   +0.0%|
+|MRR             | 0.410            | 0.410          |   +0.0%|
