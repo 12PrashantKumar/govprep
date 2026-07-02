@@ -71,6 +71,32 @@ def retrieve(query, k=3, collection_name=DEFAULT_COLLECTION, source=None):
         })
     return chunks
 
+def get_all_chunks(collection_name=DEFAULT_COLLECTION):
+    """
+    Extracts all text chunks directly from ChromaDB so BM25 can index them.
+    Uses the existing get_collection() helper to ensure the path is always correct.
+    """
+    collection = get_collection(collection_name)
+    data = collection.get() # Pulls all IDs, documents, and metadatas
+    
+    chunks = []
+    if not data or not data.get('documents'):
+        return chunks
+        
+    docs = data['documents']
+    metas = data['metadatas']
+    
+    for i in range(len(docs)):
+        meta = metas[i] if metas[i] else {}
+        chunks.append({
+            "text": docs[i],
+            "source": meta.get("source", "?"),
+            "book": meta.get("book", "?"),
+            "page": meta.get("page", "?")
+        })
+        
+    return chunks
+
 
 if __name__ == "__main__":
     import sys
