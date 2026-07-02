@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from google import genai
 
 
-from retrieve_multi import retrieve
+from retrieve_hybrid import hybrid_search as retrieve
 from rewrite import rewrite_followup
 
 base_dir = Path(__file__).resolve().parent.parent
