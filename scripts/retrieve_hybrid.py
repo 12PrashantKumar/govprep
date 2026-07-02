@@ -8,13 +8,13 @@ from rrf_fusion import reciprocal_rank_fusion
 # We load the entire corpus into BM25 once when the server starts
 print("⚙️ Booting up Hybrid Search Engine...")
 try:
-    # IMPORTANT: You must replace this with however you fetch all chunks from ChromaDB or your JSON file.
-    # If your retrieve_multi.py has a function like `get_all_chunks()`, import and use it here.
-    from retrieve_multi import get_all_chunks 
+    from retrieve_multi import retrieve as dense_retrieve, get_all_chunks
+    
+    # We load the entire corpus into BM25 once when the server starts
     all_database_chunks = get_all_chunks(collection_name="govprep_v2")
     keyword_engine = BM25Retriever(chunks=all_database_chunks)
-except ImportError:
-    print(" Warning: Could not auto-load chunks. Ensure you pass your corpus to BM25.")
+except ImportError as e:
+    print(f"⚠️ Warning: Could not auto-load chunks: {e}")
     keyword_engine = None
 
 
