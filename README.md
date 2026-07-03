@@ -37,6 +37,12 @@ The frontend and backend are separate services. The UI sends questions to the
 API over HTTP and renders the response — it has no knowledge of how the answer
 is produced. The backend owns the RAG pipeline and returns validated JSON.
 
+## System Architecture & Features
+
+* **Agentic Routing (ReAct):** Implemented a LangChain ReAct agent capable of autonomous tool selection, routing queries between a local vector database, live Wikipedia searches, and a Python math evaluator.
+* **Hybrid Search Retrieval:** Built a custom retrieval pipeline combining Dense Vector Search (ChromaDB) and Sparse Keyword Search (BM25), fused mathematically via Reciprocal Rank Fusion (RRF). See `results.md` for full benchmark metrics.
+* **Enterprise Security Guardrails:** Conducted red-team testing against OWASP LLM01 (Prompt Injection) and implemented rigid `SystemMessage` isolation to block jailbreaks and persona overrides. See `SECURITY.md` for the threat model report.
+
 ## Current corpus
 
 Currently indexed over **NCERT Class 11** textbooks (all chapters):
