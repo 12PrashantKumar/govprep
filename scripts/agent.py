@@ -96,15 +96,28 @@ def answer_agentic(question: str) -> dict:
             answer_text = final_message.content[0]['text']
         else:
             answer_text = final_message.content
-            
-        return {"answer": answer_text}
+        
+        #  NEW FIX: Extract the retrieved context chunks from the tool messages
+        retrieved_context = ""
+        for msg in final_state["messages"]:
+            if hasattr(msg,"content") and "[Source:" in str(msg.content):
+                retrieved_context += str(msg.content) + "\n"
+
+        # Return BOTH the answer and the context used to generate it
+        return {
+            "answer": answer_text, 
+            "context": retrieved_context.strip() if retrieved_context else "No context retrieved."
+        }
         
     except GraphRecursionError:
         print("🛑 [SYSTEM INTERVENTION] Max Iteration Limit Reached.")
         return {"answer": "I'm sorry, I couldn't resolve that question within my allowed reasoning steps. Please try rephrasing."}
     except Exception as e:
         print(f"🛑 [CRITICAL ERROR] {str(e)}")
-        return {"answer": "I encountered an unexpected system error while trying to think."}
+        return {"answer": "I encountered an unexpected system error while trying to think.",
+                "context": "System error occurred."
+                }
+    
 
 
 # 4. QUICK TEST BLOCK
