@@ -4,7 +4,8 @@ from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_agent
 from langgraph.errors import GraphRecursionError
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage , SystemMessage
+from langfuse.langchain import CallbackHandler
 
 load_dotenv()
 
@@ -85,9 +86,22 @@ def answer_agentic(question: str) -> dict:
     """
     
     try:
+        # Initialize the LangFuse Tracer with NO arguments
+        langfuse_handler = CallbackHandler()
+        
+        print(f"\n🤖 [AGENT INITIATED] Question: '{question}'")
+        
+        # Pass the handler, trace name, and user ID into the LangGraph config
         final_state = agent.invoke(
-            {"messages": [ SystemMessage(content = SECURITY_PROMPT),("user", question)]},
-            config={"recursion_limit": 5} 
+            {"messages": [SystemMessage(content = SECURITY_PROMPT),HumanMessage(content=question)]},
+            config={
+                "recursion_limit": 10,
+                "callbacks": [langfuse_handler],
+                "run_name": "GovPrep_Agent_Run",           # 🔍 Trace Name goes here
+                "metadata": {
+                    "langfuse_user_id": "prashant_dev"     # 🔍 User ID goes here
+                }
+            }
         )
         
         # Extract the final answer text cleanly
