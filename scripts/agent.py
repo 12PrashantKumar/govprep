@@ -120,10 +120,22 @@ def answer_agentic(question: str) -> dict:
         print("🛑 [SYSTEM INTERVENTION] Max Iteration Limit Reached.")
         return {"answer": "I'm sorry, I couldn't resolve that question within my allowed reasoning steps. Please try rephrasing."}
     except Exception as e:
-        print(f"🛑 [CRITICAL ERROR] {str(e)}")
-        return {"answer": "I encountered an unexpected system error while trying to think.",
-                "context": "System error occurred."
-                }
+        print(f"⚠️ [AGENT FALLBACK] tool-calling failed ({type(e).__name__}); using direct RAG")
+        # Graceful degradation: agent routing failed (often Groq tool-call format).
+        # Fall back to the corpus retrieval path, which is reliable.
+        try:
+            context = search_corpus.invoke(question)
+            answer_text = llm.invoke(
+                f"{SECURITY_PROMPT}\n\n"
+                f"Answer the question using ONLY the context below. "
+                f"If the answer is not in the context, say you don't have that information.\n\n"
+                f"Context:\n{context}\n\nQuestion: {question}\nAnswer:"
+            ).content
+            return {"answer": answer_text, "context": context}
+        except Exception as e2:
+            print(f"❌ [FALLBACK ALSO FAILED] {str(e2)}")
+            return {"answer": "I'm having trouble answering that right now. Please try rephrasing.",
+                    "context": "Fallback error."}
     
 
 

@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+# from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 load_dotenv()
 
@@ -31,11 +32,8 @@ def scrub_ncert_text(raw_text: str) -> str:
 def ingest_folder(folder_path, subject):
     print(f"Starting ingestion for {subject} from '{folder_path}'....")
 
-    # 1. Initialize Gemini Embeddings (768 dimensions)
-    embeddings_model = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-2",
-        output_dimensionality=768
-    )
+    
+    embeddings_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
     # 2. Initialize Chunking Strategy
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -64,35 +62,17 @@ def ingest_folder(folder_path, subject):
 
                 # Step B: Chunk text
                 chunks = text_splitter.split_documents(raw_docs)
-                print(f" -> Created {len(chunks)} clean chunks. Asking Gemini for embeddings...")
+                print(f" -> Created {len(chunks)} clean chunks.  embeddings...")
 
                 # Step C: Get Embeddings
                 text_strings = [chunk.page_content for chunk in chunks]
-                vectors = []
-
-                batch_size = 10 # only 10 chunks send to api at a time
-                for i in range(0, len(text_strings), batch_size):
-                    batch = text_strings[i:i + batch_size]
-                    print(f"    -> Embedding batch {i//batch_size + 1} (Chunks {i} to {min(i+batch_size, len(text_strings))})...")
-
-                    try:
-                        batch_vectors = embeddings_model.embed_documents(batch)
-                        vectors.extend(batch_vectors)
-                    except Exception as e:
-                        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                            print("    Hit API limit! Sleeping for 30 seconds to clear quota...")
-                            time.sleep(30)
-                            # Retry the batch after sleeping (Fixed to synchronous embed_documents)
-                            batch_vectors = embeddings_model.embed_documents(batch)
-                            vectors.extend(batch_vectors)
-                        else:
-                            raise e
-                    time.sleep(5)
+                print(f"    -> Embedding {len(text_strings)} chunks locally...")
+                vectors = embeddings_model.embed_documents(text_strings)
 
                 # Step D: Prepare for Database Insert 
                 insert_query = """
-                INSERT INTO chunks (content, subject, source, metadata, embedding, search_vector)
-                VALUES(%s, %s, %s, %s, %s, to_tsvector('english', %s));
+                INSERT INTO chunks (content, subject, source, metadata, embedding)
+                VALUES (%s, %s, %s, %s, %s)
                 """
 
                 data_to_insert = []
@@ -105,7 +85,7 @@ def ingest_folder(folder_path, subject):
                         source_name,
                         json.dumps(chunk.metadata), # convert LangChain dict to JSON string for Postgres
                         vectors[i],
-                        chunk.page_content          # Passing content again to generate the keyword search vector
+                                 
                     ))
 
                 # Step E: Batch Execute and commit
@@ -118,5 +98,7 @@ def ingest_folder(folder_path, subject):
 if __name__ == "__main__":
     
     ingest_folder("data/polity", "Polity")
+    ingest_folder("data/history", "History")
+    ingest_folder("data/geography", "Geography")
 
     print("\n Ingestion Complete!")

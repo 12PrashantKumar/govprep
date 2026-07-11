@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
 
 
 load_dotenv()
@@ -18,10 +19,7 @@ def hybrid_retriever(query:str,k:int =5) -> list[Document]:
     print(f"🔍 Running Hybrid Search for: '{query}'")
 
     # embeding the query for vector search
-    embedding_model = GoogleGenerativeAIEmbeddings(
-        model = "gemini-embedding-2",
-        output_dimensionality=768
-    )
+    embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
     query_vector = embedding_model.embed_query(query)
 
     #  PostgreSQL Strict 1-D Safeguard 
