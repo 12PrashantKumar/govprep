@@ -8,6 +8,7 @@ from langchain_groq import ChatGroq
 from scripts.pg_hybrid_retriever import hybrid_retriever
 from scripts.pg_rewriter import rewrite_query
 from scripts.pg_guardrails import check_input_safety, mask_pii
+from scripts.agent import answer_agentic
 
 load_dotenv()
 
@@ -96,3 +97,12 @@ def chat_endpoint(request: ChatRequest):
     except Exception as e:
         print(f"❌ Error in pipeline execution: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.post("/chat/agent")
+async def agent_chat(request: ChatRequest):
+    """Agentic mode: routes between corpus search, web search, and calculation."""
+    try:
+        result = answer_agentic(request.question)
+        return {"response": result.get("answer", result)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

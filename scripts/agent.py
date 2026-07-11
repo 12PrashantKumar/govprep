@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from langchain_core.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain.agents import create_agent
 from langgraph.errors import GraphRecursionError
 from langchain_core.messages import HumanMessage , SystemMessage
@@ -13,12 +13,18 @@ load_dotenv()
 # 1. DEFINE  TOOLS 
 @tool
 def search_corpus(query: str) -> str:
-    """Use this tool FIRST to search the NCERT textbooks for factual information regarding Indian Polity, history, and the Constitution."""
-    print(f"   [🔧 Action] Searching GovPrep database for: '{query}'")
+    """Use this tool FIRST to search the NCERT textbooks for factual information regarding Indian Polity, history, and geography."""
+    print(f"   [Action] Searching GovPrep database for: '{query}'")
     try:
-        from retrieve_multi import retrieve
-        chunks = retrieve(query, k=5, collection_name="govprep_v2")
-        return "\n".join(f"[Source: {c['source']} | Page: {c['page']}] {c['text']}" for c in chunks)
+        from scripts.pg_hybrid_retriever import hybrid_retriever
+        docs = hybrid_retriever(query, k=5)
+        if not docs:
+            return "No relevant information found in the corpus. Try a web_search if this is a current-affairs question."
+        return "\n\n".join(
+            f"[Source: {d.metadata.get('source', 'unknown')} | "
+            f"Subject: {d.metadata.get('subject', 'n/a')}] {d.page_content}"
+            for d in docs
+        )
     except Exception as e:
         return f"Tool error: {str(e)}. Try a different search query or approach."
 
@@ -34,28 +40,15 @@ def calculate(expression: str) -> str:
 
 @tool
 def web_search(query: str) -> str:
-    """Use this tool ONLY for current affairs, recent news, or general knowledge NOT found in the NCERT corpus. 
-    Do not use this for historical constitutional facts."""
-    print(f"   [🔧 Action] Searching Wikipedia for: '{query}'")
+    """Use this tool ONLY for current affairs, recent news, or general knowledge NOT found in the NCERT corpus."""
+    print(f"   [Action] Web search for: '{query}'")
     try:
-        import wikipedia
-        wikipedia.set_lang("en")
-        
-        # Step 1: Search for the best matching page title first
-        search_results = wikipedia.search(query)
-        
-        if not search_results:
-            return "Tool error: No Wikipedia page found. Try using shorter keywords instead of a full sentence."
-            
-        top_page = search_results[0]
-        print(f"   [↳ Detail] Fetching summary for page: '{top_page}'")
-        
-        # Step 2: Fetch the summary of that specific page
-        result = wikipedia.summary(top_page, sentences=4)
-        return result
-        
+        from tavily import TavilyClient
+        client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+        r = client.search(query, max_results=3)
+        return "\n\n".join(item["content"] for item in r["results"])
     except Exception as e:
-        return f"Tool error: Wikipedia search failed - {str(e)}. Try using a very short, specific keyword (e.g., 'Chief of Defence Staff')."
+        return f"Tool error: web search unavailable - {str(e)}."
     
 #  the tools list
 tools_list = [search_corpus, calculate, web_search]
@@ -63,7 +56,7 @@ tools_list = [search_corpus, calculate, web_search]
 
 #CREATE THE MODEL & AGENT (Global)
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"), temperature=0)
 agent = create_agent(llm, tools=tools_list)
 
 # ==========================================
