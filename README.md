@@ -115,8 +115,9 @@ streamlit run pg_app.py                     # terminal 2 — frontend
 
 ## Roadmap
 
-Planned next steps: retrieval tuning (chunking, embedding model), semantic caching, an explicit agentic router, CI/CD pipeline, and re-running RAGAS with an OpenAI judge. .
+Planned next steps: retrieval tuning (chunking, embedding model), semantic caching, an explicit agentic router, CI/CD pipeline, and re-running RAGAS with an OpenAI judge.See ROADMAP.md. .
 
 ## Notes
 
 Source PDFs and API keys are not committed. Built as a learning project to understand production-grade RAG end to end — retrieval, evaluation, grounding, observability, and serving.
+
