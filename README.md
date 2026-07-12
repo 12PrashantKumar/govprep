@@ -1,203 +1,122 @@
-# govprep
+# GovPrep AI — Production RAG Assistant for Indian Government Exam Prep
 
-An AI study assistant for Indian government exam aspirants (UPSC / CDS / SSC).
-Ask a question in plain language and get a grounded, source-cited answer drawn
-from NCERT study material — and a clear "not in my sources" when the answer
-isn't there, instead of a hallucinated guess.
+Ask a government-exam question in plain language and get a grounded, source-cited answer drawn from NCERT study material — and a clear *"not in my sources"* when the answer isn't there, instead of a hallucinated guess.
 
-Built from scratch in native Python to understand each part of a
-retrieval-augmented generation (RAG) system, then measured and tuned with a
-real evaluation loop, and served through a FastAPI backend with a Streamlit
-frontend.
+Built end to end to understand production-grade retrieval-augmented generation (RAG): retrieval, evaluation, grounding, observability, and serving — not just a wrapper around an LLM API.
 
-![govprep web UI](screenshot.png)
+![GovPrep demo](screenshot.png)
+
+**🔗 Live demo:** https://govprep-frontend-55025882120.us-central1.run.app
+> ⏳ First load may take up to a minute while the server wakes from idle.
+
+**💻 Code:** https://github.com/12PrashantKumar/govprep
+
+---
 
 ## What it does
 
-- Answers exam-prep questions grounded **only** in the source material
-- Retrieves across **multiple subjects** and tells you which book + page each
-  fact came from (source attribution)
-- Remembers the conversation, so **follow-up questions work**
-  ("what are their powers?" resolves correctly from context)
-- **Refuses to answer** when the retrieved passages don't support it — reducing
-  hallucination instead of making something up
-- Runs as a **FastAPI backend** with a **Streamlit web frontend**, or from the
-  command line
+- Answers exam-prep questions (Polity, History, Geography) grounded **only** in the source material, with source attribution.
+- Refuses to answer when the retrieved passages don't support it — reducing hallucination instead of guessing.
+- Runs two modes: a fixed RAG pipeline (`/chat`) and an **agentic mode** (`/chat/agent`) that routes between corpus search and live web search.
+- Served as a FastAPI backend with a Streamlit web frontend.
 
 ## Architecture
 
 ```
-  Streamlit frontend  ──HTTP──>  FastAPI backend  ──>  RAG pipeline  ──>  ChromaDB
-   (app.py)                       (main.py)            (rewrite ->          (vector
-                                  POST /chat            retrieve ->          store)
-                                  Pydantic-validated    generate)
+Streamlit frontend  ──HTTP──>  FastAPI backend  ──>  RAG pipeline  ──>  Postgres + pgvector
+  (pg_app.py)                   (pg_api.py)          rewrite ->            (Neon, hybrid
+                                /chat, /chat/agent    guardrails ->         dense + BM25)
+                                Pydantic-validated    hybrid retrieve ->
+                                                      generate
 ```
 
-The frontend and backend are separate services. The UI sends questions to the
-API over HTTP and renders the response — it has no knowledge of how the answer
-is produced. The backend owns the RAG pipeline and returns validated JSON.
+The frontend and backend are decoupled services — the UI sends questions over HTTP and renders validated JSON; the backend owns the pipeline.
 
-## System Architecture & Features
+- **Backend:** FastAPI — `/chat` (RAG pipeline) and `/chat/agent` (agentic ReAct mode)
+- **Retrieval:** Hybrid search — dense (pgvector) + sparse (Postgres full-text / BM25) fused with **Reciprocal Rank Fusion (RRF)**
+- **Pipeline:** query rewriting (resolves follow-ups) → security guardrails → hybrid retrieval → grounded generation with source citation
+- **Agent:** LangGraph ReAct agent with tool-calling (corpus search, live web search, calculator), max-iteration limits, and **graceful fallback to the core RAG pipeline** when tool-calling fails — so the user always gets a grounded answer
+- **Security:** red-team tested against OWASP LLM01 (Prompt Injection); rigid SystemMessage isolation blocks jailbreaks and persona overrides (see `SECURITY.md`)
+- **Database:** PostgreSQL + pgvector (Neon)
+- **Embeddings:** sentence-transformers `all-mpnet-base-v2` (local, 768-dim)
+- **LLM:** Groq — Llama 3.3 70B
+- **Observability:** LangFuse — every agent step, tool call, token cost, and latency is traced
+- **Deployment:** Docker on GCP Cloud Run
 
-* **Agentic Routing (ReAct):** Implemented a LangChain ReAct agent capable of autonomous tool selection, routing queries between a local vector database, live Wikipedia searches, and a Python math evaluator.
-* **Hybrid Search Retrieval:** Built a custom retrieval pipeline combining Dense Vector Search (ChromaDB) and Sparse Keyword Search (BM25), fused mathematically via Reciprocal Rank Fusion (RRF). See `results.md` for full benchmark metrics.
-* **Enterprise Security Guardrails:** Conducted red-team testing against OWASP LLM01 (Prompt Injection) and implemented rigid `SystemMessage` isolation to block jailbreaks and persona overrides. See `SECURITY.md` for the threat model report.
+## Evaluation
 
-## Current corpus
+Retrieval quality was measured, not assumed — and generation quality too. Scored against a 24-question gold set (across all three subjects, each tagged with a required keyword and expected subject).
 
-Currently indexed over **NCERT Class 11** textbooks (all chapters):
+| Layer | Metric | Score |
+|-------|--------|-------|
+| Retrieval | Hit Rate@3 | 0.375 |
+| Retrieval | MRR | 0.243 |
+| Generation | Faithfulness (LLM-as-a-judge) | 4.30 / 5 |
 
-- **Political Science** — *Indian Constitution at Work*
-- **History** — *Themes in World History*
-- **Geography** — *Fundamentals of Physical Geography*
-
-The corpus is **not fixed or limited to these PDFs** — the ingestion pipeline
-loads any text-layer documents placed in the subject folders, so more subjects,
-classes, and source types can be added over time. NCERT was chosen as the
-starting corpus because it is core, well-structured study material for UPSC/CDS
-General Studies.
+Retrieval uses **strict** matching (a hit counts only when the correct keyword *and* subject appear), which undercounts semantically-correct retrievals — so real-world relevance is higher than the raw number suggests. Faithfulness (4.30/5) confirms generated answers are well-grounded in the retrieved context. Full method and limitations in `EVALUATION.md`.
 
 ## How it works
 
-govprep has two pipelines:
+**Ingestion** (run once): `PDFs → text extraction → chunking → embeddings → Postgres/pgvector`
 
-**Ingestion (run once, ahead of time)**
-```
-PDFs  ->  text extraction  ->  chunking  ->  embeddings  ->  vector store
-```
-
-**Query (runs on every question)**
+**Query** (every question):
 ```
 question + history
-   -> rewrite question to be self-contained (resolves follow-ups)
-   -> retrieve top-k relevant chunks across all subjects
-   -> build a grounded prompt (history + passages + sources)
+   -> rewrite to a self-contained query (resolves follow-ups)
+   -> security guardrails (prompt-injection + PII checks)
+   -> hybrid retrieve (dense + BM25 + RRF)
+   -> build grounded prompt (passages + sources)
    -> generate answer, cited to source
-   -> save the turn to memory
 ```
 
-## API
+## Current corpus
 
-The backend exposes a single chat endpoint.
-
-```
-POST /chat
-  request:  { "question": "what are fundamental rights?" }
-  response: { "answer": "...", "rewritten": "...",
-              "sources": [ { "source": "polity", "page": 4 } ] }
-```
-
-Run the backend and open the auto-generated interactive docs at
-http://127.0.0.1:8000/docs . Input is validated with Pydantic — malformed
-requests return a clear `422`; errors return proper status codes (`400` for bad
-input, `503` when the model is busy).
-
-## Tech stack
-
-- **Python 3.11+**
-- **FastAPI + Uvicorn** — backend API
-- **Pydantic** — request/response validation
-- **Streamlit** — web frontend
-- **google-genai** SDK — Gemini 2.5 Flash (generation), Gemini 2.5 Flash-Lite
-  (query rewriting)
-- **ChromaDB** — local vector database
-- **sentence-transformers** (`all-MiniLM-L6-v2`) — embeddings
-- **pypdf** — document loading
-
-## Retrieval evaluation
-
-Retrieval quality was measured, not assumed. A 15-question gold set (across all
-three subjects, each tagged with a required keyword and expected subject) is
-scored with **Hit Rate@3** and **MRR**, counting a hit only when both the
-correct keyword and correct subject appear.
-
-| Config                          | Hit Rate@3 | MRR   |
-|---------------------------------|------------|-------|
-| Baseline (fixed 500-char)       | 0.533      | 0.433 |
-| Tuned (recursive 1000/100, k=3) | 0.733      | 0.656 |
-
-A **+37% hit rate / +52% MRR** improvement over baseline, found by sweeping
-chunking strategy, chunk size, and top-k against the gold set. Full method,
-results, and limitations are in [EVALUATION.md](EVALUATION.md).
+Indexed over NCERT Class 11 textbooks — Political Science (*Indian Constitution at Work*), History (*Themes in World History*), and Geography (*Fundamentals of Physical Geography*). The ingestion pipeline loads any text-layer document placed in the subject folders, so more subjects and sources can be added over time.
 
 ## Project structure
 
 ```
 govprep/
-  main.py                # FastAPI backend (POST /chat)
-  app.py                 # Streamlit frontend (calls the API over HTTP)
-  govprep_v1.py          # command-line interface
-  scripts/
-    ingest_v2.py         # ingestion: load PDFs, chunk, embed, store
-    chunkers.py          # recursive chunking
-    retrieve_multi.py    # multi-document retrieval with metadata
-    memory.py            # conversation memory
-    rewrite.py           # query rewriting for follow-ups
-    generate_v1.py       # the query pipeline orchestrator
-    llm.py               # centralized LLM calls with retry/backoff
-  eval/
-    gold_set.json        # evaluation questions
-    score.py             # Hit Rate@3 + MRR scorer
-    sweep.py             # chunk-size sweep
-    results.md           # raw experiment log
-  data/
-    polity/  history/  geography/   # NCERT PDFs (per subject)
-  EVALUATION.md          # evaluation method + results + limitations
-  README.md
+├── pg_api.py                    # FastAPI entrypoint (/chat, /chat/agent)
+├── pg_app.py                    # Streamlit frontend (calls the API over HTTP)
+├── scripts/
+│   ├── pg_hybrid_retriever.py   # dense (pgvector) + BM25 + RRF retrieval
+│   ├── pg_rewriter.py           # query rewriting for follow-ups
+│   ├── pg_guardrails.py         # prompt-injection + PII checks
+│   ├── pg_ingest.py             # NCERT PDF ingestion pipeline
+│   ├── agent.py                 # LangGraph agent + tools + graceful fallback
+│   └── pg_eval_ragas_hybrid.py  # evaluation harness
+├── eval/
+│   └── gold_set.json            # evaluation questions
+├── data/  polity/ history/ geography/   # NCERT PDFs (not committed)
+├── Dockerfile.backend
+├── SECURITY.md                  # threat model + red-team report
+├── EVALUATION.md                # eval method, results, limitations
+└── requirements.txt
 ```
 
 ## Setup
 
 ```bash
-# 1. clone and enter the repo
 git clone https://github.com/12PrashantKumar/govprep.git
 cd govprep
-
-# 2. create + activate a virtual environment
 python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # macOS / Linux
-
-# 3. install dependencies
+venv\Scripts\activate          # Windows  (source venv/bin/activate on macOS/Linux)
 pip install -r requirements.txt
-
-# 4. add your Gemini API key
-#    create a file named .env containing:
-#    GEMINI_API_KEY=your_key_here
-
-# 5. add source PDFs (text-layer) into data/polity, data/history, data/geography
+# create a .env with DATABASE_URL, GROQ_API_KEY, TAVILY_API_KEY, and LangFuse keys
 ```
 
-## Usage
-
-**Ingest the corpus** (run once, builds the vector store):
+Ingest the corpus, then run backend + frontend:
 ```bash
-cd scripts
-python ingest_v2.py recursive govprep_v2 1000 100
+python scripts/pg_ingest.py                 # one-time: load, chunk, embed, store
+uvicorn pg_api:app --reload                 # terminal 1 — backend
+streamlit run pg_app.py                     # terminal 2 — frontend
 ```
 
-**Run the full app** (backend + frontend, in two terminals):
-```bash
-# terminal 1 — backend
-uvicorn main:app --reload
+## Roadmap
 
-# terminal 2 — frontend
-streamlit run app.py
-```
-
-**Or use the command line:**
-```bash
-python govprep_v1.py
-```
+Planned next steps: retrieval tuning (chunking, embedding model), semantic caching, an explicit agentic router, CI/CD pipeline, and re-running RAGAS with an OpenAI judge. .
 
 ## Notes
 
-- Source PDFs and the local vector store are not committed to the repo.
-- Built as a learning project to understand production-grade RAG end to end:
-  retrieval, evaluation, grounding, and serving — not just a wrapper around an
-  LLM API.
-
-live : https://govprep-frontend-55025882120.us-central1.run.app
----
-
-
+Source PDFs and API keys are not committed. Built as a learning project to understand production-grade RAG end to end — retrieval, evaluation, grounding, observability, and serving.
