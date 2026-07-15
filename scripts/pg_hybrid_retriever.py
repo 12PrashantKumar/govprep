@@ -9,7 +9,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-
+EMBEDDING_MODEL = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
 def hybrid_retriever(query:str,k:int =5) -> list[Document]:
     """
@@ -19,8 +19,8 @@ def hybrid_retriever(query:str,k:int =5) -> list[Document]:
     print(f"🔍 Running Hybrid Search for: '{query}'")
 
     # embeding the query for vector search
-    embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-    query_vector = embedding_model.embed_query(query)
+    
+    query_vector = EMBEDDING_MODEL.embed_query(query)
 
     #  PostgreSQL Strict 1-D Safeguard 
     # If LangChain returns a nested list [[0.1...]], extract the inner list
