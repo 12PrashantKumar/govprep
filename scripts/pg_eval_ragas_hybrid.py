@@ -7,7 +7,7 @@ load_dotenv()
 judge = ChatGroq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"), temperature=0)
 
 with open("eval/gold_set.json", encoding="utf-8") as f:
-    gold = json.load(f)[:20]   # 20 questions = solid, fast
+    gold = json.load(f)[:37]   # 20 questions = solid, fast
 
 scores = []
 for item in gold:

@@ -120,5 +120,21 @@
     "question": "Describe the coastal plains of India.",
     "expected_source": "geography",
     "required_keyword": "coastal"
-  }
+  },{ "question": "In which year was the National Emergency declared in India?", "expected_source": "polity", "required_keyword": "emergency" },
+{ "question": "What was the Congress system of one-party dominance?", "expected_source": "polity", "required_keyword": "congress" },
+{ "question": "How were the princely states integrated into India after independence?", "expected_source": "polity", "required_keyword": "princely" },
+{ "question": "What was the role of the Planning Commission in India?", "expected_source": "polity", "required_keyword": "planning" },
+{ "question": "On what basis were Indian states reorganised after independence?", "expected_source": "polity", "required_keyword": "linguistic" },
+
+{ "question": "What were the mahajanapadas?", "expected_source": "history", "required_keyword": "mahajanapadas" },
+{ "question": "What do inscriptions tell us about the Mauryan empire?", "expected_source": "history", "required_keyword": "mauryan" },
+{ "question": "What is known about the drainage system of Mohenjodaro?", "expected_source": "history", "required_keyword": "drainage" },
+
+{ "question": "What triggered the revolt of 1857?", "expected_source": "history", "required_keyword": "1857" },
+{ "question": "What was the significance of the Salt March?", "expected_source": "history", "required_keyword": "salt" },
+{ "question": "Who chaired the Drafting Committee of the Constituent Assembly?", "expected_source": "history", "required_keyword": "constituent" },
+
+{ "question": "What factors affect population density in India?", "expected_source": "geography", "required_keyword": "density" },
+{ "question": "What are the main causes of migration in India?", "expected_source": "geography", "required_keyword": "migration" }
+
 ]
