@@ -45,19 +45,31 @@ The frontend and backend are decoupled services — the UI sends questions over 
 
 ## Evaluation
 
-Retrieval quality was measured, not assumed — and generation quality too. Scored against a 24-question gold set (across all three subjects, each tagged with a required keyword and expected subject).
+Retrieval quality was measured, not assumed — and generation quality too. Both layers are scored against a 37-question gold set spanning all three subjects, each tagged with a required keyword and expected subject.
 
 | Layer | Metric | Score |
 |-------|--------|-------|
-| Retrieval | Hit Rate@3 | 0.375 |
-| Retrieval | MRR | 0.243 |
-| Generation | Faithfulness (LLM-as-a-judge) | 4.30 / 5 |
+| Retrieval | Hit Rate@3 | **0.811** |
+| Retrieval | MRR | **0.748** |
+| Generation | Faithfulness (LLM-as-a-judge) | **4.68 / 5** |
 
-Retrieval uses **strict** matching (a hit counts only when the correct keyword *and* subject appear), which undercounts semantically-correct retrievals — so real-world relevance is higher than the raw number suggests. Faithfulness (4.30/5) confirms generated answers are well-grounded in the retrieved context. Full method and limitations in `EVALUATION.md`.
+Retrieval uses **strict** matching — a hit counts only when the correct keyword *and* subject appear in a top-3 chunk — so the raw number understates semantically-correct retrievals. MRR of 0.748 means the correct passage is usually ranked **first**, not merely present. Faithfulness confirms generated answers are grounded in the context actually retrieved. Method and limitations in `EVALUATION.md`.
+
+### What the eval harness caught
+
+The eval loop isn't decoration — it found two real problems that were invisible from the outside:
+
+**1. A quarter of the gold set was unanswerable.** Hit Rate@3 sat at 0.375 and the obvious conclusion was "the retriever is weak." It wasn't. Reading the failures showed the ancient-India questions (Harappa, Ashoka's edicts, Kalinga) had no corresponding source — the corpus held *Themes in World History*, not Indian history. Those questions could never be answered regardless of retrieval quality. Expanding the corpus to Class 12 took Hit Rate@3 from **0.375 → 0.811** and MRR from **0.243 → 0.748**, with no change to the retriever itself.
+
+**2. The embedding model was reloading on every query.** The retriever constructed `HuggingFaceEmbeddings` inside the request path, reloading ~400MB per call. Locally this silently OOM-killed long eval runs; in production it added significant latency to every request. Moving it to module scope fixed both.
+
+Improving retrieval also lifted faithfulness (**4.30 → 4.68**) — better context produces better-grounded answers. The two layers aren't independent, which is exactly why both are measured.
 
 ## How it works
 
-**Ingestion** (run once): `PDFs → text extraction → chunking → embeddings → Postgres/pgvector`
+**Ingestion** (run once): `PDFs → text extraction → scrubbing → chunking → embeddings → Postgres/pgvector`
+
+Ingestion is **idempotent** — each source is checked before processing, so re-running to add new material never duplicates existing chunks.
 
 **Query** (every question):
 ```
@@ -71,7 +83,13 @@ question + history
 
 ## Current corpus
 
-Indexed over NCERT Class 11 textbooks — Political Science (*Indian Constitution at Work*), History (*Themes in World History*), and Geography (*Fundamentals of Physical Geography*). The ingestion pipeline loads any text-layer document placed in the subject folders, so more subjects and sources can be added over time.
+Indexed over NCERT Class 11 and Class 12 textbooks:
+
+- **Polity** — *Indian Constitution at Work* (XI), *Politics in India Since Independence* (XII)
+- **History** — *Themes in World History* (XI), *Themes in Indian History* (XII)
+- **Geography** — *Fundamentals of Physical Geography* (XI)
+
+The ingestion pipeline loads any text-layer document placed in the subject folders, so more subjects and sources can be added over time — and because ingestion is idempotent, expanding the corpus is a single re-run.
 
 ## Project structure
 
@@ -83,15 +101,17 @@ govprep/
 │   ├── pg_hybrid_retriever.py   # dense (pgvector) + BM25 + RRF retrieval
 │   ├── pg_rewriter.py           # query rewriting for follow-ups
 │   ├── pg_guardrails.py         # prompt-injection + PII checks
-│   ├── pg_ingest.py             # NCERT PDF ingestion pipeline
+│   ├── pg_ingest.py             # idempotent NCERT PDF ingestion pipeline
 │   ├── agent.py                 # LangGraph agent + tools + graceful fallback
-│   └── pg_eval_ragas_hybrid.py  # evaluation harness
+│   ├── pg_eval_retrieval.py     # Hit Rate@3 + MRR harness
+│   └── pg_eval_ragas_hybrid.py  # generation-quality harness
 ├── eval/
-│   └── gold_set.json            # evaluation questions
+│   └── gold_set.json            # 37-question evaluation set
 ├── data/  polity/ history/ geography/   # NCERT PDFs (not committed)
 ├── Dockerfile.backend
 ├── SECURITY.md                  # threat model + red-team report
 ├── EVALUATION.md                # eval method, results, limitations
+├── ROADMAP.md                   # planned work
 └── requirements.txt
 ```
 
@@ -108,16 +128,21 @@ pip install -r requirements.txt
 
 Ingest the corpus, then run backend + frontend:
 ```bash
-python scripts/pg_ingest.py                 # one-time: load, chunk, embed, store
+python scripts/pg_ingest.py                 # load, chunk, embed, store (idempotent)
 uvicorn pg_api:app --reload                 # terminal 1 — backend
 streamlit run pg_app.py                     # terminal 2 — frontend
 ```
 
+Run the evaluation harnesses:
+```bash
+python scripts/pg_eval_retrieval.py         # Hit Rate@3 + MRR
+python scripts/pg_eval_ragas_hybrid.py      # faithfulness
+```
+
 ## Roadmap
 
-Planned next steps: retrieval tuning (chunking, embedding model), semantic caching, an explicit agentic router, CI/CD pipeline, and re-running RAGAS with an OpenAI judge.See ROADMAP.md. .
+Planned next steps: further retrieval tuning (chunking strategy, reranking), semantic caching, an explicit agentic router, a CI/CD pipeline, and re-running RAGAS with an OpenAI judge (Groq is incompatible with RAGAS's `n>1` sampling). See `ROADMAP.md`.
 
 ## Notes
 
 Source PDFs and API keys are not committed. Built as a learning project to understand production-grade RAG end to end — retrieval, evaluation, grounding, observability, and serving.
-
